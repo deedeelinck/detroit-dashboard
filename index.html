@@ -567,6 +567,11 @@ body,table,input,select,button{font-variant-numeric:tabular-nums}
   .dealgrid .r{grid-template-columns:1fr}
   .bar{grid-template-columns:130px 1fr 80px}
 }
+
+/* Lease Review - after LOI, terms agreed and the document being redlined. Violet so it reads as its own stage. */
+.b-violet{background:#EDE7F6;color:#5B3E9E}
+.t-violet{color:#6A4CB0;font-weight:600}
+.card .stg.b-violet{background:#6A4CB0;color:#fff}
 </style>
 </head>
 <body>
@@ -687,6 +692,7 @@ let SRC = { mode:"none", name:null, when:null };
 function stageOf(v){
   const t=String(v||"").toUpperCase();
   if(t.includes("ELIMINAT")) return "eliminated";
+  if(t.includes("LEASE")) return "leasereview";                 // Lease Review - must come before the bare REVIEW test
   if(t.includes("LOI")||t.includes("NEGOTIAT")) return "negotiating";
   if(t.includes("LONGLIST")) return "surveyed";                // Longlist
   if(t.includes("TOUR")) return "active";                       // Touring
@@ -701,10 +707,21 @@ function riskOf(v){
   return "tbd";
 }
 const RISK_LBL={high:"High",mod:"Med",low:"Low",tbd:"TBD"};
-const STAGE_LBL={negotiating:"LOI",surveyed:"Longlist",active:"Touring",reviewing:"Reviewing",eliminated:"Eliminated"};
-const STAGE_FULL={negotiating:"LOI",surveyed:"Longlist",active:"Touring",reviewing:"Reviewing",eliminated:"Eliminated"};
-const STAGE_CLS={negotiating:"b-green",surveyed:"b-amber",active:"b-blue",reviewing:"b-grey",eliminated:"b-red"};
-const STAGE_TXT={negotiating:"t-green",surveyed:"t-amber",active:"t-blue",reviewing:"t-grey",eliminated:"t-red"};
+const STAGE_LBL={negotiating:"LOI",leasereview:"Lease Review",surveyed:"Longlist",active:"Touring",reviewing:"Reviewing",eliminated:"Eliminated"};
+const STAGE_FULL={negotiating:"LOI",leasereview:"Lease Review",surveyed:"Longlist",active:"Touring",reviewing:"Reviewing",eliminated:"Eliminated"};
+const STAGE_CLS={negotiating:"b-green",leasereview:"b-violet",surveyed:"b-amber",active:"b-blue",reviewing:"b-grey",eliminated:"b-red"};
+const STAGE_TXT={negotiating:"t-green",leasereview:"t-violet",surveyed:"t-amber",active:"t-blue",reviewing:"t-grey",eliminated:"t-red"};
+function negoBadge(site){
+  const stageTxt = String(negoField(site,/^stage/i) || "");
+  if(/\bDEAD\b/i.test(stageTxt)) return {lbl:"Dead", cls:"b-red", dead:true};
+  const title = String(site.title||"");
+  const match = (DATA.sites||[]).find(x =>
+      (x.addr && title.toLowerCase().includes(String(x.addr).toLowerCase())) ||
+      (x.nickname && title.toLowerCase().includes(String(x.nickname).toLowerCase())));
+  if(match && match.stage) return {lbl:STAGE_LBL[match.stage], cls:STAGE_CLS[match.stage], dead:match.stage==="eliminated"};
+  return {lbl:STAGE_LBL.negotiating, cls:"b-green", dead:false};
+}
+
 const PPV_STAR = 300;   // star anything under $300 per vehicle per month
 const dispName = s => (blank(s.nickname) ? s.addr : s.nickname + " - " + s.addr);
 
@@ -720,7 +737,7 @@ function sfCell(v){
 }
 const sfLabel = (base,v) => isSFRange(v) ? base+" (divisible)" : base;
 const RISK_CLS={high:"b-red",mod:"b-amber",low:"b-green",tbd:"b-grey"};
-const PIN_FILL={negotiating:"#2E7D32",surveyed:"#E0A33A",active:"#3C6795",reviewing:"#6B7280",eliminated:"#C0392B"};
+const PIN_FILL={negotiating:"#2E7D32",leasereview:"#6A4CB0",surveyed:"#E0A33A",active:"#3C6795",reviewing:"#6B7280",eliminated:"#C0392B"};
 
 /* Derive anything the workbook hasn't cached, so nothing shows blank just because
    Excel hasn't recalculated the file since it was last written. */
@@ -1004,7 +1021,7 @@ function visible(){
       .some(k=>String(s[k]||"").toLowerCase().includes(q)));
   }
   // closest to a deal first: LOI -> Longlist -> Touring -> Eliminated
-  const ord={negotiating:0,surveyed:1,active:2,reviewing:3,eliminated:4};
+  const ord={negotiating:0,leasereview:1,surveyed:2,active:3,reviewing:4,eliminated:5};
   const big=Number.MAX_SAFE_INTEGER;
   const cmp={
     cost:(a,b)=>(isNum(a.monthly)?a.monthly:big)-(isNum(b.monthly)?b.monthly:big),
@@ -1022,7 +1039,7 @@ function renderChips(){
   DATA.sites.forEach(s=>counts[s.stage]=(counts[s.stage]||0)+1);
   const c=$("#statchips"); c.innerHTML="";
   // filter labels follow the Ops Tracker vocabulary
-  [["all","All"],["negotiating","LOI"],["surveyed","Longlist"],["active","Touring"],["reviewing","Reviewing"],["eliminated","Eliminated"]]
+  [["all","All"],["negotiating","LOI"],["leasereview","Lease Review"],["surveyed","Longlist"],["active","Touring"],["reviewing","Reviewing"],["eliminated","Eliminated"]]
   .forEach(([k,lbl])=>{
     const n=counts[k]||0;
     const b=el("button","chip"+(filterStage===k?" on":"")+(n?"":" zero"), esc(lbl)+'<span class="n">'+n+"</span>");
@@ -1398,7 +1415,7 @@ function ensureLeaflet(){
 
 function mapLegend(){
   const lg=el("div","maplegend");
-  ["negotiating","surveyed","active","reviewing","eliminated"].forEach(kk=>{
+  ["negotiating","leasereview","surveyed","active","reviewing","eliminated"].forEach(kk=>{
     const lbl = STAGE_LBL[kk];
     const sp=el("span");
     const i=el("i"); i.style.background=PIN_FILL[kk]; sp.appendChild(i);
@@ -1437,9 +1454,9 @@ function buildSatMap(canvas,pts){
   L.tileLayer(SAT_TILES,{maxZoom:19,attribution:"Imagery &copy; Esri, Maxar, Earthstar Geographics"}).addTo(map);
   L.tileLayer(SAT_LABELS,{maxZoom:19,opacity:.9}).addTo(map);
 
-  const order={eliminated:0,surveyed:1,active:2,negotiating:3};
+  const order={eliminated:0,surveyed:1,active:2,leasereview:3,negotiating:4};
   pts.slice().sort((a,b)=>order[a.stage]-order[b.stage]).forEach(s=>{
-    const live=s.stage==="negotiating"||s.stage==="active";
+    const live=s.stage==="negotiating"||s.stage==="leasereview"||s.stage==="active";
     if(live){
       L.circleMarker([s.lat,s.lon],{radius:15,color:PIN_FILL[s.stage],weight:0,
         fillColor:PIN_FILL[s.stage],fillOpacity:.22,interactive:false}).addTo(map);
@@ -1558,12 +1575,12 @@ function renderMapSVG(host,pts){
   pos.forEach(v=>placed.push({x0:v.x-9,x1:v.x+9,y0:v.y-9,y1:v.y+9}));
 
   // pins - eliminated first so the live ones draw on top
-  const order={eliminated:0,surveyed:1,active:2,negotiating:3};
+  const order={eliminated:0,surveyed:1,active:2,leasereview:3,negotiating:4};
   const tip=el("div","maptip");
   pts.slice().sort((a,b)=>order[a.stage]-order[b.stage]).forEach(s=>{
     const P=pos.get(s), x=P.x, y=P.y;
     const gp=mk("g",{class:"pin"});
-    const live=s.stage==="negotiating"||s.stage==="active";
+    const live=s.stage==="negotiating"||s.stage==="leasereview"||s.stage==="active";
     if(live) gp.appendChild(mk("circle",{cx:x,cy:y,r:14,fill:PIN_FILL[s.stage],opacity:.18}));
     gp.appendChild(mk("circle",{cx:x,cy:y,r:live?8:6,fill:PIN_FILL[s.stage],stroke:"#fff","stroke-width":2,class:"dot"}));
     const ttl=mk("title",{});
@@ -1639,7 +1656,7 @@ function renderCost(){
   key.appendChild(el("span","star","★"));
   key.appendChild(el("span",null,"= under "+money0(PPV_STAR)+" per Vehicle / Month"));
   key.appendChild(el("span","sep","·"));
-  [["negotiating","LOI"],["surveyed","Longlist"],["active","Touring"],["reviewing","Reviewing"],["eliminated","Eliminated"]].forEach(([k,lbl])=>{
+  [["negotiating","LOI"],["leasereview","Lease Review"],["surveyed","Longlist"],["active","Touring"],["reviewing","Reviewing"],["eliminated","Eliminated"]].forEach(([k,lbl])=>{
     key.appendChild(el("span",null,'<span class="'+STAGE_TXT[k]+'">'+esc(lbl)+"</span>"));
   });
   v.appendChild(key);
@@ -1666,7 +1683,7 @@ function renderCost(){
             + "\u2014 Rent per Month \u00f7 capacity \u2014 then re-sync.")));
     const list=el("div");
     list.appendChild(el("b",null,"Still needed for all "+priced.length+" priced sites, starting with the live ones: "));
-    list.appendChild(el("span",null, priced.filter(x=>x.stage==="negotiating"||x.stage==="active")
+    list.appendChild(el("span",null, priced.filter(x=>x.stage==="negotiating"||x.stage==="leasereview"||x.stage==="active")
       .map(x=>dispName(x)).join(" · ")));
     nb.appendChild(list);
     v.appendChild(nb);
@@ -1781,7 +1798,7 @@ function renderNego(){
     if(addr) main.appendChild(el("div","nraddr",esc(addr)));
     const stage=negoField(site,/^stage/i);
     if(stage) main.appendChild(el("div","nrstage",
-      '<span class="badge b-green">'+esc(STAGE_LBL.negotiating)+"</span> <span>"+esc(stage)+"</span>"));
+      '<span class="badge '+negoBadge(site).cls+'">'+esc(negoBadge(site).lbl)+"</span> <span>"+esc(stage)+"</span>"));
 
     const meta=el("div","nrmeta");
     const mcell=(k,val)=>{ const d=el("div","nrm");
